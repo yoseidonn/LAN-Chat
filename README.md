@@ -1,4 +1,4 @@
-# Online-Lan-Chat
+# LAN-Chat
 A console based chatting application written in Python using socket programming.
 
 Once you start the program, it searchs for other servers if there's already one serving.
