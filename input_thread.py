@@ -18,7 +18,7 @@ def background_task():
         print(f"[{datetime.datetime.now()}] New message!")
 
         # Restore the input line
-        sys.stdout.write(f"\r{saved_input}")
+        sys.stdout.write(f"\rEnter a command: {saved_input}")
         sys.stdout.flush()
 
         # Sleep before the next update
@@ -33,7 +33,7 @@ bg_thread.start()
 while True:
     try:
         # Prompt the user for input
-        user_input = input("Enter a command: ")
+        user_input = input("")
         if user_input.lower() in ['exit', 'quit', 'q']:
             print("Exiting...")
             break
