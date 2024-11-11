@@ -154,10 +154,24 @@ class Server():
             logging.info("[BROADCAST] No response from any server on the network.")
             return False
 
-    def send(self, message):
-        # TODO - Implement for sending messages to clients.
-        pass
-
+    def send(self, connections: socket.socket | list[socket.socket], message: str):
+        message = message.encode(FORMAT)
+        message_length = str(len(message)).encode(FORMAT)
+        send_length = str(len(message_length)).encode(FORMAT)
+        
+        if type(connections) is list:
+            for conn in connections:
+                conn.send(send_length)
+                conn.send(message_length)
+                conn.send(message)
+        elif type(connections) is socket.socket:
+            conn.send(send_length)
+            conn.send(message_length)
+            conn.send(message)
+        else:
+            SERVER_LOGGER.warning("[SERVER] Message couldn't send to \"{connections}")    
+        
+        
 if __name__ == '__main__':
     server = Server()
     server.start()
