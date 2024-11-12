@@ -22,8 +22,7 @@ USERNAME_MESSAGE = '!USERNAME'
 NEW_MESSAGE_FROM_CLIENT = '!NEW_MESSAGE_FROM_CLIENT'
 NEW_MESSAGE_FROM_SERVER = '!NEW_MESSAGE_FROM_SERVER'
 BROADCAST_MESSAGE = "!IS_THERE_ANY_SERVER"
-HERE_I_AM_HOSTING = "!HERE_I_AM_HOSTING"
-IS_THERE_ANY_HOST = "!IS_THERE_ANY_HOST"
+BROADCAST_REPLY = "!HERE_I_AM_HOSTING"
 SERVER_IS_CLOSING = "!SERVER_IS_CLOSING"
 #######################################################################
 
@@ -98,10 +97,8 @@ class Server():
             ###################################################    
             # Decide if this is a special request
             ###################################################    
-            if request == IS_THERE_ANY_HOST:
-                self.send(conn, HERE_I_AM_HOSTING)
 			
-            elif request == DISCONNECT_MESSAGE:
+            if request == DISCONNECT_MESSAGE:
                 self.update_everyone(mod=DISCONNECT_MESSAGE, user_name=user_name)
                 MESSAGE_LOGGER.info(f"{user_name} -> {request}")
                 connected = False
@@ -211,7 +208,7 @@ class Server():
         ###################################################
         try:
             response, addr = broadcast_soc.recvfrom(HEADER_LENGTH)  # Buffer size of 1024 bytes
-            if response == HERE_I_AM_HOSTING:
+            if response == BROADCAST_REPLY:
                 SERVER_LOGGER.warning(f"[SERVER] Presenting server found at {addr[0]}:{addr[1]}")
                 return True  # Server is already running
         
