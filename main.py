@@ -76,7 +76,6 @@ client_handler = logging.FileHandler(
 MESSAGE_LOGGER.addHandler(message_handler)
 SERVER_LOGGER.addHandler(server_handler)
 CLIENT_LOGGER.addHandler(client_handler)
-#######################################################################
 
 #######################################################################
 # Set environment variables
