@@ -7,22 +7,23 @@ import socket, threading
 if __name__ == '__main__':
     BASE_DIR = pathlib.Path(__name__).parent.parent
     SERVER = socket.gethostbyname(socket.gethostname())
-    PORT = pydotenv.Environment.get(key="PORT")
+    PORT = pydotenv.Environment().get(key="PORT")
 else:
-    BASE_DIR = pydotenv.Environment.get(key="BASE-DIR")
-    SERVER = pydotenv.Environment.get(key="SERVER")
-    PORT = pydotenv.Environment.get(key="PORT")
+    BASE_DIR = pydotenv.Environment().get(key="BASE-DIR")
+    SERVER = pydotenv.Environment().get(key="SERVER")
+    PORT = pydotenv.Environment().get(key="PORT")
 
 ADDR = (SERVER, PORT)
-TIMEOUT = pydotenv.Environment.get(key="TIMEOUT")
-FORMAT = pydotenv.Environment.get(key="FORMAT")
+TIMEOUT = pydotenv.Environment().get(key="TIMEOUT")
+FORMAT = pydotenv.Environment().get(key="FORMAT")
 HEADER_LENGTH = 64
-DISCONNECT = '!DISCONNECT'
-USERNAME = '!USERNAME'
+DISCONNECT_MESSAGE = '!DISCONNECT'
+USERNAME_MESSAGE = '!USERNAME'
 NEW_MESSAGE_FROM_CLIENT = '!NEW_MESSAGE_FROM_CLIENT'
 NEW_MESSAGE_FROM_SERVER = '!NEW_MESSAGE_FROM_SERVER'
 BROADCAST_MESSAGE = "!IS_THERE_ANY_SERVER"
-SERVER_PRESENTING = "!HERE_I_AM_SERVING"
+HERE_I_AM_HOSTING = "!HERE_I_AM_HOSTING"
+IS_THERE_ANY_HOST = "!IS_THERE_ANY_HOST"
 SERVER_IS_CLOSING = "!SERVER_IS_CLOSING"
 #######################################################################
 
@@ -43,9 +44,14 @@ class Server():
     def __init__(self):
         self.run = True
         self.connections: list[socket.socket] = list()
-        self.any_server_presenting = self.broadcast()
+
+        self.start()
         
     def start(self):
+        self.any_server_presenting = self.send_broadcast()
+        if self.any_server_presenting:
+            self.go_client_mode()
+            
         SERVER_LOGGER.warning("[SERVER] Starting...")
         listen_thread = threading.Thread(target=self.listen)
         listen_thread.daemon = True    
@@ -59,7 +65,8 @@ class Server():
         # Meanwhile, other connection informations would be sent already,
         # Thus, first one that accepts to be host will claim the throne.
         
-        # TODO - Now it just gets them notified that server is being closed.
+        # TODO - Implement client side!!!
+        # Now it just gets them notified that server is being closed.
         for conn in self.connections:
             message = SERVER_IS_CLOSING.encode(FORMAT)
             message_length = len(message)
@@ -78,45 +85,99 @@ class Server():
         self.connections.append(conn)
         
         connected = True
-        # TODO - Check this last message protocol
-        last_message = ''
-        username = ''
+        last_request = str()
+        user_name = f"{addr[0]}:{addr[1]}"
         while connected:    
-            message_len = conn.recv(HEADER_LENGTH).decode(format=FORMAT)
-            message = conn.recv(message_len)
+            request_len = conn.recv(HEADER_LENGTH).decode(format=FORMAT)
+            request = conn.recv(request_len)
             
             # Check if user has copied the header command
-            if (message == last_message):
+            if (request == last_request):
                 continue
-            else:
-                last_message = message
                 
-            # TODO - Create some other checks in need.
-            if (last_message == DISCONNECT):
+            ###################################################    
+            # Decide if this is a special request
+            ###################################################    
+            if request == IS_THERE_ANY_HOST:
+                self.send(conn, HERE_I_AM_HOSTING)
+			
+            elif request == DISCONNECT_MESSAGE:
+                self.update_everyone(mod=DISCONNECT_MESSAGE, user_name=user_name)
+                MESSAGE_LOGGER.info(f"{user_name} -> {request}")
                 connected = False
-            elif (last_message == USERNAME):
-                username = message
-            elif (last_message == NEW_MESSAGE_FROM_CLIENT):
-                # If the msg is a chat message, send the msg to other connections
-                for connection in self.connections:
-                    if (conn == connection):
-                        continue
-                    
-                    # TODO - Implement this send method
-                    #self.send(connection, NEW_MESSAGE_FROM_SERVER)
-                    connection.send(len(NEW_MESSAGE_FROM_SERVER))
-                    connection.send(NEW_MESSAGE_FROM_SERVER)
-                    
-                    username_message = f'[{username}: {message}]'
-                    connection.send(len(username_message))
-                    connection.send(username_message)
+                
+            elif request == NEW_MESSAGE_FROM_CLIENT:
+                self.last_request = NEW_MESSAGE_FROM_CLIENT
 
-            MESSAGE_LOGGER.info(username_message)
+            elif request == USERNAME_MESSAGE:
+                self.last_request = USERNAME_MESSAGE
+			
+            ###################################################    
+			# Process the request as what last_request is		
+            ###################################################    
+            if last_request == NEW_MESSAGE_FROM_CLIENT:
+                MESSAGE_LOGGER.info(f"{user_name} -> {request}")
+                self.update_everyone(mod=NEW_MESSAGE_FROM_CLIENT, message=request, user_name=user_name, connection=conn)
+                self.last_request = ""
 
+            elif last_request == USERNAME_MESSAGE:
+                user_name = request
+
+        ###################################################    
+        # Close the connection, user has disconnected    
+        ###################################################    
         conn.close()
         self.connections.remove(conn)
-        SERVER_LOGGER.info(f'[DISCONNECT] {addr} has disconnected! Active connections {len(self.connections)}')
-                    
+        SERVER_LOGGER.info(f'[DISCONNECT] {addr} has disconnected! Active connections {len(self.connections)}')                
+
+    def send(self, connection: socket.socket, message: str):
+        ###################################################    
+        # Send the message
+        ###################################################   
+        message = message.encode(FORMAT)
+        message_length = str(len(message)).encode(FORMAT)
+        send_length = str(len(message_length)).encode(FORMAT)
+        
+        connection.send(send_length)
+        connection.send(message_length)
+        connection.send(message)
+
+    def update_everyone(self, mod: str = None, user_name: str = str(), message: str = str(), connection: socket.socket = None):
+        ###################################################    
+        # Say everyone what is about to get sent
+        ###################################################    
+        message = message.encode(FORMAT)
+        message_length = str(len(mod)).encode(FORMAT)
+        send_length = str(len(message_length)).encode(FORMAT)        
+        for conn in self.connections:
+            if conn == connection:
+                continue
+            conn.send(send_length)
+            conn.send(message_length)
+            conn.send(message)
+        
+        ###################################################    
+        # Edit the message
+        ###################################################    
+        if mod == NEW_MESSAGE_FROM_CLIENT:
+            message = f"{user_name} -> {message}".encode(FORMAT)
+        
+        elif mod == DISCONNECT_MESSAGE:
+            message = f"[SERVER] {user_name} has disconnected!"
+            
+        message_length = str(len(message)).encode(FORMAT)
+        send_length = str(len(message_length)).encode(FORMAT)        
+    
+        ###################################################    
+        # Send message to everyone
+        ###################################################    
+        for conn in self.connections:
+            if conn == connection:
+                continue
+            conn.send(send_length)
+            conn.send(message_length)
+            conn.send(message)
+            
     def listen(self):
         soc.listen()
         SERVER_LOGGER.warning(f'[SERVER] Listening on {ADDR}:{PORT}')
@@ -134,18 +195,23 @@ class Server():
         SERVER_LOGGER.info(f'[SERVER] Stopped listening on {ADDR}:{PORT}')
 
     def send_broadcast(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.settimeout(TIMEOUT)
+        ###################################################
+        # Set a socket to send the broadcast
+        ###################################################
+        broadcast_soc = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        broadcast_soc.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        broadcast_soc.settimeout(TIMEOUT)
         
         # Send broadcast message
         logging.info("[BROADCAST] Sending discovery message to network...")
-        sock.sendto(BROADCAST_MESSAGE, ('<broadcast>', PORT))
+        broadcast_soc.sendto(BROADCAST_MESSAGE, ('<broadcast>', PORT))
 
+        ###################################################
+        # Wait for any reponse
+        ###################################################
         try:
-            # Listen for responses
-            response, addr = sock.recvfrom(1024)  # Buffer size of 1024 bytes
-            if response == SERVER_PRESENTING:
+            response, addr = broadcast_soc.recvfrom(HEADER_LENGTH)  # Buffer size of 1024 bytes
+            if response == HERE_I_AM_HOSTING:
                 SERVER_LOGGER.warning(f"[SERVER] Presenting server found at {addr[0]}:{addr[1]}")
                 return True  # Server is already running
         
@@ -153,25 +219,6 @@ class Server():
         except socket.timeout:
             logging.info("[BROADCAST] No response from any server on the network.")
             return False
-
-    def send(self, connections: socket.socket | list[socket.socket], message: str):
-        message = message.encode(FORMAT)
-        message_length = str(len(message)).encode(FORMAT)
-        send_length = str(len(message_length)).encode(FORMAT)
-        
-        if type(connections) is list:
-            for conn in connections:
-                conn.send(send_length)
-                conn.send(message_length)
-                conn.send(message)
-        elif type(connections) is socket.socket:
-            conn.send(send_length)
-            conn.send(message_length)
-            conn.send(message)
-        else:
-            SERVER_LOGGER.warning("[SERVER] Message couldn't send to \"{connections}")    
-        
-        
 if __name__ == '__main__':
     server = Server()
     server.start()
